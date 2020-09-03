@@ -1,27 +1,5 @@
-/*
-ab -n 1000 -c 10 http://localhost:8000/teste
-
-ab -n 1000 -c 10 http://localhost:3001/teste
-
-docker run -p 27017:27017 -e AUTH=no tutum/mongodb
-*/
-
-const MongoClient = require('mongodb').MongoClient;
-const urlMongo = 'mongodb://localhost:27017';
-const dbName = 'pip2be';
-
-const insert = async (db, data) => {
-    //const collection = db.collection('endinfos');
-    //return await collection.insertOne(data, (err, result) => {
-    return await db.insertOne(data, (err, result) => {
-        if (err) {
-            throw new Error(err)
-        }
-        console.log("Inserted documents into the collection");
-        return result;
-    });
-}
-
+var redis = require("redis");
+var rdcli = redis.createClient();
 var fastDate = require('fast-date')({format: 'unix'})
 const httpProxy = require('http-proxy');
 const opts = {
@@ -31,7 +9,7 @@ const opts = {
     }
 };
 
-const stringify = require('fast-stringify');
+
 const statusCode = require('./status-code');
 const url = require('url');
 var EventEmitter = require('eventemitter3');
@@ -54,7 +32,7 @@ function latency(t2,t1) {
 }
 
 var count_endpoints = {};
-function responseInfoEndpoint(redisCli, endpointsList, endpoint, info) {
+function responseInfoEndpoint(endpointsList, endpoint, info) {
     var endp_exist = endpointsList.includes(endpoint);
     if (endp_exist) {
         if (count_endpoints[endpoint] != undefined) {
@@ -62,14 +40,6 @@ function responseInfoEndpoint(redisCli, endpointsList, endpoint, info) {
         } else {
             count_endpoints[endpoint] = [info];
         }
-
-        var msgg = stringify(count_endpoints);
-        redisCli.rpush([`client_id`, msgg], (err) => {
-            if (err){
-                console.log('Ooops!');
-            }
-        });
-
         //console.log(count_endpoints)
         //console.log(JSON.stringify(count_endpoints, null, 2))
     } else {
@@ -86,18 +56,40 @@ var endpoint_list = [
 ];
 
 var cont=1;
-MongoClient.connect(urlMongo, { useUnifiedTopology: true }, (err, client) => {
-    if (err) {
-        console.log(err)
-        throw new Error('algum erro no mongo')
-    }
+rdcli.on("connect", () => {
     
-    console.log("MongoClient connected");
-    const db = client.db(dbName);
+    console.log("redis connected");
 
     const proxy = httpProxy.createProxyServer(opts).listen(8000);
     var reqMethod;
     proxy.on('proxyReq', (proxyReq, req, res) => {
+
+        proxyReq.on('error', function(err) {
+            console.log('(1) A', err)
+            if (err.code === "ECONNRESET") {
+                console.log("Timeout occurs");
+                return;
+            }
+            //handle normal errors
+        })
+        .on('connect', () => {
+            console.log('(1) connect')
+        })
+        .on('ready', () => {
+            console.log('(1) ready')
+        })
+        .on('data', (data) => {
+            console.log('(1) data')
+        })
+        .on('close', () => {
+            console.log('(1) close')
+        })
+        .on('end', () => {
+            console.log('(1) end')
+        })
+        .on('timeout', () => {
+            console.log('(1) timeout')
+        });
 
         reqMethod = proxyReq.method;
         //console.log(proxyReq.method)
@@ -124,9 +116,35 @@ MongoClient.connect(urlMongo, { useUnifiedTopology: true }, (err, client) => {
         cont++
     })
     .on('proxyRes', (proxyRes, req, res) => {
-
+        
+        proxyRes.on('error', function(err) {
+            console.log('(2) A', err)
+            if (err.code === "ECONNRESET") {
+                console.log("Timeout occurs");
+                return;
+            }
+        })
+        .on('connect', () => {
+            console.log('(2) connect')
+        })
+        .on('ready', () => {
+            console.log('(2) ready')
+        })
+        .on('data', (data) => {
+            console.log('(2) data')
+        })
+        .on('close', () => {
+            console.log('(2) close')
+        })
+        .on('end', () => {
+            console.log('(2) end')
+        })
+        .on('timeout', () => {
+            console.log('(2) timeout')
+        });
         //console.log(proxyRes.agent.sockets)
-
+        
+        /*
         const url_info = url.parse(req.url,true);
         var endpoint = url_info.pathname;
         var t2 = new Date();// fastDate()
@@ -137,23 +155,16 @@ MongoClient.connect(urlMongo, { useUnifiedTopology: true }, (err, client) => {
             //message: status_code(proxyRes.statusCode),
             query_parameters: url_info.search,
             reqMethod
-        };
-
-        // colocar em background
-        db.collection('endpoint_info'+endpoint).insertOne(info_response, (error, response) => {
-            if(error) {
-                console.log('Error occurred while inserting');
-                console.log(error)
-               // return 
-            } else {
-               console.log('inserted record', response.ops[0]);
-              // return 
+        }
+        responseInfoEndpoint(endpoint_list, endpoint, info_response);
+        
+        var msgg = JSON.stringify(info_response);
+        rdcli.rpush([`client_date`, msgg], (err) => {
+            if (err){
+                console.log('Ooops!');
             }
         });
-
-        //client.close();
-
-        //responseInfoEndpoint(rdcli, endpoint_list, endpoint, info_response);
+        */
 
         /*
         if (proxyRes.headers['content-length'] > 50) {
@@ -162,8 +173,11 @@ MongoClient.connect(urlMongo, { useUnifiedTopology: true }, (err, client) => {
         }
         */
  
+        //console.log( latency(t2, t1) );
+        
+        //res.end()
     })
-    .on('error', (err, req, res) => {
+    .on('error', function (err, req, res) {
 
         // grava no banco
         // envia notificação: email, push, socket
