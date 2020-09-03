@@ -7,7 +7,7 @@ const opts = {
 };
 const proxy = httpProxy.createProxyServer(opts).listen(8000);
 const statusCode = require('./status-code');
-
+const url = require('url');
 const EventEmitter = require('events');
 class MyEmitter extends EventEmitter {};
 
@@ -24,41 +24,67 @@ function status_code(code) {
 }
 
 function latency(t2,t1) {
-    return (t2-t1);
+    let lt = (t2-t1)
+    return lt+' ms';
 }
 
-function requestSumEndpoint() {
-
+var count_endpoints = {};
+function responseInfoEndpoint(endpointsList, endpoint, info) {
+    var endp_exist = endpointsList.includes(endpoint);
+    if (endp_exist) {
+        if (count_endpoints[endpoint] != undefined) {
+            count_endpoints[endpoint].push(info)
+        } else {
+            count_endpoints[endpoint] = [info];
+        }
+        console.log(count_endpoints)
+    } else {
+        console.log('ENDPOINT NÃO CADASTRADO')
+    }
 }
+
 
 var t1;
 
 var endpoint_list = [
     '/',
     '/teste',
+    '/abc',
 ];
-
-var endpoints = {};
-endpoints['/']      = 0;
-endpoints['/teste'] = 0;
-endpoints['/abc']   = 0;
+/*
+endpoint
+    data
+    latencia
+    statusCode
+    response
+    parametros
+*/
 
 proxy.on('proxyReq', (proxyReq, req, res) => {
+    
     t1 = new Date();
 
-    var endpoint = req.url;
-    var host = req.headers.host;
+    //const queryObject = url.parse(req.url,true).query;
+    //console.log(queryObject);
+
+    //var endpoint = req.url;
+    //var host = req.headers.host;
+    //requestInfoEndpoint(endpoint_list, endpoint.toString());
     //console.log(host, endpoint);
-    console.log(endpoints);
-    if (endpoints[endpoint]) {
-        endpoints[endpoint] = (endpoints[endpoint] + 1);
-    } else {
-        endpoints[endpoint] = 1;
-    }
-    
+
+
     //myEmitter.emit('e_request');
 })
 .on('proxyRes', (proxyRes, req, res) => {
+    var endpoint = req.url;
+    var t2 = new Date();
+    var info_response = {
+        date: new Date(),
+        latency: latency(t2, t1),
+        status_code: proxyRes.statusCode,
+        message: status_code(proxyRes.statusCode),
+    }
+    responseInfoEndpoint(endpoint_list, endpoint, info_response);
 
     //console.log( status_code(proxyRes.statusCode) )
 
@@ -69,7 +95,7 @@ proxy.on('proxyReq', (proxyReq, req, res) => {
     }
     */
     
-    //var t2 = new Date();
+    
     //console.log( latency(t2, t1) );
 })
 .on('error', function (err, req, res) {
