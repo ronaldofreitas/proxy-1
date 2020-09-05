@@ -15,8 +15,6 @@
     "eventemitter3": "^4.0.7",
     "exectimer": "^2.2.2",
     "express": "^4.17.1",
-    "fast-date": "^3.0.3",
-    "fast-stringify": "^2.0.0",
     "http-proxy": "^1.18.1",
     "mongodb": "^3.6.1",
     "redis": "^3.0.2"
