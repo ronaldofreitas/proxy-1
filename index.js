@@ -6,102 +6,132 @@ ab -n 1000 -c 10 http://localhost:3001/teste
 docker run -p 27017:27017 -e AUTH=no tutum/mongodb
 docker run -p 6379:6379 redis
 */
+'use strict';
 
 const httpProxy = require('http-proxy');
-const opts = {
+const opts_proxy = {
     target: {
         host: 'localhost',
         port: 3001
-    }
+    },
+    //proxyTimeout: 500,
+    //timeout: 500
 };
-
+const proxy_port = 8000;
 const url = require('url');
+const Monitor = require('ping-monitor');
 
 /*
-const EventEmitter = require('eventemitter3');
-class MyEmitter extends EventEmitter {};
 
-const myEmitter = new MyEmitter();
-myEmitter.on('e_request', () => {
-    console.log('evento REQUEST');
+
+
+
+
+    NÃO É NECESSÁRIO COMPaRAR O HOST NEM CONFERIR A LISTA DE ENDPOINTS
+    APOSTA MESMO É EM UM BASIC AUTH BEM FEITO E SEGURO
+
+
+    
+
+
+*/
+
+const MongoClientClass = require('./data/MongoInstance');
+const Queue = require('./lib/Queue');
+const myMonitor = new Monitor({
+    address: 'localhost',
+    port: 3001,
+    id:123,
+    title: 'tag_client_xx',
+    interval: 0.1 // 1 = em minutos, 0.5 = 30 segundos
 });
 
-const statusCode = require('./status-code');
-function status_code(code) {
-    return statusCode[code] != undefined ? statusCode[code] : {
-        message: 'Erro Desconhecido',
-        description: ' -- '
-    }
-}
-status_code('200');
-function latency(t2,t1) {
-    return (t2-t1);
-}
-*/
-var t1;
+var t1=0;
+async function start(opts) {
+    console.log('SERVIÇO INICIADO')
+    await MongoClientClass.init(opts.dbName);
+    Queue.process();
 
-const Queue = require('./lib/Queue');
-Queue.process();
+    const proxy = httpProxy.createProxyServer(opts_proxy).listen(proxy_port);
+    proxy
+    .on('proxyReq', (proxyReq, req, _) => {
+        t1 = Date.now();
+    })
+    .on('proxyRes', (proxyRes, req, _) => {
+        const url_info = url.parse(req.url,true);
+        var info_response = {
+            time_start: t1,
+            time_end: Date.now(),
+            status_code: proxyRes.statusCode,
+            query_parameters: url_info.search,
+            request_method: req.method
+        };
+        const infend = {};
+        infend[url_info.pathname ? url_info.pathname : '/'] = info_response;
+        Queue.add('EndpointInfo', infend);
+    })
+    .on('error', (err, req, res) => {
+        //https://nodejs.org/api/errors.html#errors_common_system_errors
+        const url_info = url.parse(req.url,true);
+        var info_response = {
+            time_start: t1,
+            time_end: Date.now(),
+            query_parameters: url_info.search,
+            request_method: req.method,
+            error_message: err.toString(),
+            error_code: err.code,
+        };
+        const infoerror = {};
+        infoerror[url_info.pathname ? url_info.pathname : '/'] = info_response;
+        //console.log(infoerror)
 
-const proxy = httpProxy.createProxyServer(opts).listen(8000);
-var reqMethod, protocol;
-//proxy.on('proxyReq', (proxyReq, req, res) => {
-proxy.on('proxyReq', (proxyReq, req, _) => {
+        // grava no banco
+        // envia notificação: email, push, socket
 
-    reqMethod = proxyReq.method;
-    t1 = Date.now();
-    protocol = proxyReq.agent.protocol;
+        //myEmitter.emit('e_request');
+        //await Queue.add('EndpointInfo', infend);
 
-    //console.log(proxyReq.agent.sockets)
+        res.setHeader('Content-Type', 'application/json');
+        res.end(JSON.stringify({
+            message: "Unavailable Server"
+        }));
+    });
+};
 
-    //const url_info = url.parse(req.url,true);
-    //console.log(url_info);
+myMonitor.once('up', (res, state) => {
+    start({
+        dbName: state.title
+    }).then(ret => {
+        console.log(ret)
+    }).catch(e => {
+        console.log(e)
+    });
+    console.log(state)
+    console.log('PING OK');
+});
 
-    //var endpoint = req.url;
-    //var host = req.headers.host;
-    //console.log(host, host_allow, req.url)
+myMonitor.on('up', (res, state) => {
+    //console.log(state)
+    console.log('Yay!! ' + res.address + ':' + res.port + ' is up.');
+});
 
-    //myEmitter.emit('e_request');
-})
-.on('proxyRes', async (proxyRes, req, res) => {
+myMonitor.on('down', (res, state) => {
+    console.log(state)
+    console.log('Oh Snap!! ' + res.address + ':' + res.port + ' is down! ');
+});
 
-    const url_info = url.parse(req.url,true);
-    var endpoint = url_info.pathname;
-    var info_response = {
-        time_start: t1,
-        time_end: Date.now(),
-        status_code: proxyRes.statusCode,
-        query_parameters: url_info.search,
-        reqMethod,
-        protocol
-    };
-    const infend = {};
-    infend[endpoint] = info_response;
-    console.log(infend)
+myMonitor.on('stop', (res, state) => {
+    console.log(state)
+    console.log(res.address + ' monitor has stopped.');
+});
 
-    //await Queue.add('EndpointInfo', infend);
-})
-.on('error', (err, req, res) => {
-    const url_info = url.parse(req.url,true);
-    var endpoint = url_info.pathname;
-    var info_response = {
-        time_start: t1,
-        time_end: Date.now(),
-        query_parameters: url_info.search,
-        reqMethod,
-        error: err,
-        protocol
-    };
-    const infend = {};
-    infend[endpoint] = info_response;
-    //console.log(infend)
+myMonitor.on('error', (error, res) => {
+    console.log('XXXXXXXXXXXXXXXXXXXXXXXX ERROR SERVER XXXXXXXXXXXXXXXXXXXXXXXXX')
+    console.log(res);
+    console.log(error);
+});
 
-    // grava no banco
-    // envia notificação: email, push, socket
-
-    res.setHeader('Content-Type', 'application/json');
-    res.end(JSON.stringify({
-        message: "servidor indisponível"
-    }));
-    //res.json(info_response).end();
+myMonitor.on('timeout', (error, res) => {
+    console.log(res);
+    console.log(error);
 });
