@@ -13,7 +13,7 @@ class MongoClientClass {
     }
     async init(dbName) {
         await this.client.connect();
-        console.log('connected',dbName);
+        console.log('db connected',dbName);
         this.db = this.client.db(dbName);
     }
 }
