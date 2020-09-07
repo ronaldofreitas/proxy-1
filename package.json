@@ -17,6 +17,7 @@
     "http-proxy": "^1.18.1",
     "mongodb": "^3.6.1",
     "ping-monitor": "^0.5.0",
+    "pino": "^6.6.0",
     "redis": "^3.0.2"
   }
 }
