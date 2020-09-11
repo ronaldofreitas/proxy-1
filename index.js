@@ -6,36 +6,51 @@ ab -n 1000 -c 10 http://localhost:3001/teste
 docker run -p 27017:27017 -e AUTH=no tutum/mongodb
 docker run -p 6379:6379 redis
 */
-'use strict';
 
+'use strict';
 
 
 /*
 
-
     NÃO É NECESSÁRIO COMPaRAR O HOST NEM CONFERIR A LISTA DE ENDPOINTS
-    APOSTA MESMO É EM UM BASIC AUTH BEM FEITO E SEGURO
-
-
-    DEIXAR ESSA PARTE COM JS PURO, SEM TYPESCRIPT
-
-
-    DEIXA O TYPESCRIPT APENAS NA API REST
-  
-
+    FAZ UM BASIC AUTH BEM FEITO E SEGURO
 
 */
 
 const httpProxy = require('http-proxy');
-const MongoClientClass = require('./data/MongoInstance');
 const Queue = require('./lib/Queue');
+var host_server = "localhost", port_server = 3001, id_server = 123;
+
 const { spawn } = require('child_process');
-spawn(`nohup node ./services/PingService.js ${host_server} ${port_server} ${id_server} > ping-out.log &`, [], { detached:true, shell: true }).unref();
+
+spawn('bash', ['./KILL.sh'], {
+  cwd: process.cwd(),
+  detached: true,
+  stdio: "inherit"
+});
+
+spawn(`nohup node ./services/PingService.js ${host_server} ${port_server} ${id_server} > ./logs/ping-out.log &`, [], { detached:true, shell: true, stdio: 'ignore' }).unref()
+
+process.on('exit', () => {
+  console.log('processo finalizado');
+});
+var cleanExit = () => {
+    console.log('finalizando processo');
+
+    spawn('bash', ['./KILL.sh'], {
+        cwd: process.cwd(),
+        detached: true,
+        stdio: "inherit"
+    });
+
+    process.exit();
+};
+process.on('SIGINT', cleanExit); // catch ctrl-c
+process.on('SIGTERM', cleanExit); // catch kill
 
 var t1=0;
 const start = async (opts) => {
 
-    await MongoClientClass.init(opts.client_db);
     Queue.process();
 
     const proxy = httpProxy.createProxyServer(opts.proxy.config).listen(opts.proxy.port);
@@ -46,23 +61,22 @@ const start = async (opts) => {
             time_start: t1,
             time_end: Date.now(),
             status_code: proxyRes.statusCode,
-            request_method: req.method
+            request_method: req.method,
+            url_path: req.url,
+            groups: []
         };
-        const infend = {};
-        infend[req.url] = info_response;
-        Queue.add('EndpointInfo', infend);
+        Queue.add('EndpointInfo', info_response);
     })
     .on('error', (err, req, res) => {
         var info_response = {
             time_start: t1,
             time_end: Date.now(),
             request_method: req.method,
+            url_path: req.url,
             error_message: err.toString(),
             error_code: err.code,
         };
-        const infoerror = {};
-        infoerror[req.url] = info_response;
-        console.log(infoerror)
+        console.log(info_response)
 
         // grava no banco
         // envia notificação: email, push, socket
@@ -77,7 +91,6 @@ const start = async (opts) => {
     });
 };
 
-var host_server = "localhost", port_server = 3001, id_server = 123;
 start({
     client_db: "db_client_2",
     proxy: {
