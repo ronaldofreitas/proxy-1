@@ -17,11 +17,25 @@ docker run -p 6379:6379 redis
 
 */
 
-const httpProxy = require('http-proxy');
-const Queue = require('./lib/Queue');
-var host_server = "localhost", port_server = 3001, id_server = 123;
+const 
+    httpProxy = require('http-proxy'),
+    Queue = require('./lib/Queue'),
+    host_server = "localhost",
+    port_server = 3001,
+    id_server = 123,
+    { spawn } = require('child_process'),
+    cleanExit = () => {
+        console.log('finalizando processo');
 
-const { spawn } = require('child_process');
+        spawn('bash', ['./KILL.sh'], {
+            cwd: process.cwd(),
+            detached: true,
+            stdio: "inherit"
+        });
+
+        process.exit();
+    };
+var t1 = 0;
 
 spawn('bash', ['./KILL.sh'], {
   cwd: process.cwd(),
@@ -29,70 +43,54 @@ spawn('bash', ['./KILL.sh'], {
   stdio: "inherit"
 });
 
-spawn(`nohup node ./services/PingService.js ${host_server} ${port_server} ${id_server} > ./logs/ping-out.log &`, [], { detached:true, shell: true, stdio: 'ignore' }).unref()
-
 process.on('exit', () => {
-  console.log('processo finalizado');
-});
-var cleanExit = () => {
-    console.log('finalizando processo');
+    console.log('processo finalizado');
+})
+.on('SIGINT', cleanExit) // catch ctrl-c
+.on('SIGTERM', cleanExit); // catch kill
 
-    spawn('bash', ['./KILL.sh'], {
-        cwd: process.cwd(),
-        detached: true,
-        stdio: "inherit"
-    });
-
-    process.exit();
-};
-process.on('SIGINT', cleanExit); // catch ctrl-c
-process.on('SIGTERM', cleanExit); // catch kill
-
-var t1=0;
 const start = async (opts) => {
+    try {
+        spawn(`nohup node ./services/PingService.js ${host_server} ${port_server} ${id_server} > ./logs/ping-out.log &`, [], { detached:true, shell: true, stdio: 'ignore' }).unref()
+        Queue.process();
 
-    Queue.process();
+        const proxy = httpProxy.createProxyServer(opts.proxy.config).listen(opts.proxy.port);
+        proxy
+        .on('proxyReq', () => { t1 = Date.now(); })
+        .on('proxyRes', (proxyRes, req, _) => {
+            let info_endpoint_request = {
+                time_start: t1,
+                time_end: Date.now(),
+                status_code: proxyRes.statusCode,
+                request_method: req.method,
+                url_path: req.url,
+                groups: []
+            };
+            Queue.add('EndpointInfo', info_endpoint_request);
+        })
+        .on('error', (err, req, res) => {
+            let error_endpoint_app = {
+                time_start: t1,
+                time_end: Date.now(),
+                request_method: req.method,
+                url_path: req.url,
+                error_message: err.toString(),
+                error_code: err.code,
+            };
+            Queue.add('ApplicationError', error_endpoint_app);
 
-    const proxy = httpProxy.createProxyServer(opts.proxy.config).listen(opts.proxy.port);
-    proxy
-    .on('proxyReq', () => { t1 = Date.now(); })
-    .on('proxyRes', (proxyRes, req, _) => {
-        var info_response = {
-            time_start: t1,
-            time_end: Date.now(),
-            status_code: proxyRes.statusCode,
-            request_method: req.method,
-            url_path: req.url,
-            groups: []
-        };
-        Queue.add('EndpointInfo', info_response);
-    })
-    .on('error', (err, req, res) => {
-        var info_response = {
-            time_start: t1,
-            time_end: Date.now(),
-            request_method: req.method,
-            url_path: req.url,
-            error_message: err.toString(),
-            error_code: err.code,
-        };
-        console.log(info_response)
+            res.setHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify({
+                message: "Unavailable Server"
+            }));
+        });
 
-        // grava no banco
-        // envia notificação: email, push, socket
-
-        //myEmitter.emit('e_request');
-        //await Queue.add('EndpointInfo', infend);
-
-        res.setHeader('Content-Type', 'application/json');
-        res.end(JSON.stringify({
-            message: "Unavailable Server"
-        }));
-    });
-};
+    } catch (error) {
+        return error
+    }
+}
 
 start({
-    client_db: "db_client_2",
     proxy: {
         config: {
             target: {

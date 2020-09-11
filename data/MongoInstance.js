@@ -1,5 +1,5 @@
 const { MongoClient } = require('mongodb');
-
+console.log('USAR ATLAS')
 class MongoClientClass {
     constructor() {
         const url = 'mongodb://localhost:27017';
