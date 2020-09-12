@@ -1,8 +1,6 @@
 /*
 ab -n 1000 -c 10 http://localhost:8000/teste
 
-ab -n 1000 -c 10 http://localhost:3001/teste
-
 docker run -p 27017:27017 -e AUTH=no tutum/mongodb
 docker run -p 6379:6379 redis
 docker run -d --hostname my-rabbit --name rabbit13 -p 8080:15672 -p 5672:5672 -p 25676:25676 rabbitmq:3-management
@@ -14,12 +12,20 @@ docker rm $(docker ps -qa)
 
 'use strict';
 
-
 /*
+na hora de criar a conta, vai criar um subdominio hash e porta aleatória, exemplo:
 
-    NÃO É NECESSÁRIO COMPaRAR O HOST NEM CONFERIR A LISTA DE ENDPOINTS
-    FAZ UM BASIC AUTH BEM FEITO E SEGURO
+4w57ef5.pipe2be.com:4547
 
+API_SECRET = 
+
+if () {
+
+}
+
+o usuário vai cadastarr seus endpoints 
+e depois o sistema vai verificar em background se as requisições fazem match 
+se houver algum endpoint diferente do cadastrado o sistema vai 'bloquear ou notificar'
 */
 
 const 
@@ -68,8 +74,7 @@ const start = async (opts) => {
                 time_end: Date.now(),
                 status_code: proxyRes.statusCode,
                 request_method: req.method,
-                url_path: req.url,
-                groups: []
+                url_path: req.url
             };
             BQueue.add('EndpointInfo', info_endpoint_request);
         })
