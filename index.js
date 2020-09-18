@@ -30,7 +30,7 @@ se houver algum endpoint diferente do cadastrado o sistema vai 'bloquear ou noti
 
 const 
     httpProxy = require('http-proxy'),
-    BQueue = require('./services/Background'),
+    //BQueue = require('./services/Background'),
     host_server = "localhost",
     port_server = 3001,
     id_server = 123,
@@ -60,15 +60,20 @@ process.on('exit', () => {
 .on('SIGINT', cleanExit) // catch ctrl-c
 .on('SIGTERM', cleanExit); // catch kill
 
+const tst = (b) => {
+    var a =1
+    var b=2
+    return a+b
+}
 const start = async (opts) => {
     try {
         spawn(`nohup node ./services/PingService.js ${host_server} ${port_server} ${id_server} > ./logs/ping-out.log &`, [], { detached:true, shell: true, stdio: 'ignore' }).unref()
-        BQueue.process();
+        //BQueue.process();
 
         const proxy = httpProxy.createProxyServer(opts.proxy.config).listen(opts.proxy.port);
         proxy
         .on('proxyReq', () => { t1 = Date.now(); })
-        .on('proxyRes', (proxyRes, req, _) => {
+        .on('proxyRes', async (proxyRes, req, _) => {
             let info_endpoint_request = {
                 time_start: t1,
                 time_end: Date.now(),
@@ -76,9 +81,15 @@ const start = async (opts) => {
                 request_method: req.method,
                 url_path: req.url
             };
-            BQueue.add('EndpointInfo', info_endpoint_request);
+
+            //const xas = await tst('xxxxxxxxx')
+            //console.log(xas)
+            setTimeout(() => { console.log('proxyRes') }, 3000);
+
+            //await BQueue.add('EndpointInfo', info_endpoint_request);
         })
         .on('error', (err, req, res) => {
+            console.log(err)
             let error_endpoint_app = {
                 time_start: t1,
                 time_end: Date.now(),
@@ -87,7 +98,7 @@ const start = async (opts) => {
                 error_message: err.toString(),
                 error_code: err.code,
             };
-            BQueue.add('ApplicationError', error_endpoint_app);
+            //BQueue.add('ApplicationError', error_endpoint_app);
 
             res.setHeader('Content-Type', 'application/json');
             res.end(JSON.stringify({
